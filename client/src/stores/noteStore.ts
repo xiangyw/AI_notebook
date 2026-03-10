@@ -199,6 +199,50 @@ export const useNoteStore = create<NoteStore>((set) => ({
     set({ selectedFolderId: id, selectedNoteId: null })
   },
 
+  // 移动笔记到文件夹 - 修复 Bug #4: 拖拽笔记到文件夹后自动刷新列表
+  moveNote: async (noteId: string, targetFolderId: string) => {
+    try {
+      // 先从当前状态获取笔记
+      let note: Note | undefined
+      set((state) => {
+        note = state.notes.find((n) => n.id === noteId)
+        return {}
+      })
+      
+      if (!note) {
+        throw new Error(`Note ${noteId} not found`)
+      }
+      
+      // 调用 API 更新笔记的文件夹
+      const updatedNote = await notesApi.update({
+        ...note,
+        folderId: targetFolderId,
+        updatedAt: new Date().toISOString(),
+      })
+      
+      // 本地更新状态 - 这会触发 React 组件重新渲染
+      // 注意：set() 调用会通知 Zustand 状态已变更，所有订阅该 store 的组件会自动重新渲染
+      set((state) => ({
+        notes: state.notes.map((n) =>
+          n.id === noteId ? updatedNote : n
+        ),
+        saveStatus: {
+          status: 'saved',
+          lastSaved: new Date().toISOString(),
+        },
+      }))
+    } catch (error) {
+      console.error('Failed to move note:', error)
+      set({
+        saveStatus: {
+          status: 'error',
+          error: '移动失败，请检查网络连接',
+        },
+      })
+      throw error
+    }
+  },
+
   // UI Actions
   toggleSidebar: () => {
     set((state) => ({
