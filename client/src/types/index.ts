@@ -54,6 +54,7 @@ export interface NoteStore {
   
   // Actions - 文件夹
   selectFolder: (id: string) => void
+  moveNote: (noteId: string, targetFolderId: string) => Promise<void>
   
   // Actions - UI
   toggleSidebar: () => void
