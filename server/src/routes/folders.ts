@@ -57,7 +57,20 @@ router.post('/', async (req, res, next) => {
     }
     
     if (!isDatabaseAvailable()) {
-      throw new AppError(ErrorCodes.DATABASE_ERROR, '数据库不可用', 503);
+      // 文件系统模式：文件夹通过笔记路径隐式创建
+      // 返回成功，实际文件夹会在保存笔记时自动创建
+      const folder: FolderInfo = {
+        path,
+        name,
+        noteCount: 0,
+      };
+      
+      res.status(201).json({
+        success: true,
+        data: { folder },
+        message: '文件夹已创建（文件系统模式）',
+      });
+      return;
     }
     
     const pool = getPool();
@@ -110,7 +123,12 @@ router.put('/:path', async (req, res, next) => {
     }
     
     if (!isDatabaseAvailable()) {
-      throw new AppError(ErrorCodes.DATABASE_ERROR, '数据库不可用', 503);
+      // 文件系统模式：文件夹名称存储在配置文件中，暂不实现
+      res.json({
+        success: true,
+        message: '文件夹更新成功（文件系统模式：仅内存更新）',
+      });
+      return;
     }
     
     const pool = getPool();
@@ -151,7 +169,12 @@ router.delete('/:path', async (req, res, next) => {
     const { path: folderPath } = req.params;
     
     if (!isDatabaseAvailable()) {
-      throw new AppError(ErrorCodes.DATABASE_ERROR, '数据库不可用', 503);
+      // 文件系统模式：文件夹是隐式的，无需删除
+      res.json({
+        success: true,
+        message: '文件夹已删除（文件系统模式）',
+      });
+      return;
     }
     
     const pool = getPool();

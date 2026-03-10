@@ -9,12 +9,13 @@ interface ApiFolder {
 }
 
 function FolderTree() {
-  const { selectedFolderId, selectFolder, notes } = useNoteStore()
+  const { selectedFolderId, selectFolder, notes, moveNote } = useNoteStore()
   const [folders, setFolders] = useState<ApiFolder[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [newFolderPath, setNewFolderPath] = useState('')
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null)
 
   useEffect(() => {
     loadFolders()
@@ -67,6 +68,26 @@ function FolderTree() {
     }
   }
 
+  // 拖拽放置到文件夹
+  const handleDrop = async (folderId: string, e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOverFolder(null)
+    const noteId = e.dataTransfer.getData('text/plain')
+    if (!noteId) return
+
+    try {
+      await moveNote(noteId, folderId)
+    } catch (error) {
+      console.error('Failed to move note:', error)
+      alert('移动笔记失败')
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
   // 计算每个文件夹的笔记数量（本地计算）
   const getNoteCount = (folderPath: string) => {
     if (folderPath === 'all' || folderPath === 'favorites' || folderPath === 'trash') {
@@ -83,7 +104,7 @@ function FolderTree() {
   ]
 
   return (
-    <nav className="p-2 space-y-1">
+    <nav className="p-2 space-y-1" data-testid="folder-tree">
       {/* 默认文件夹 */}
       {defaultFolders.map((folder) => {
         const isActive = selectedFolderId === folder.path
@@ -93,11 +114,9 @@ function FolderTree() {
           <button
             key={folder.path}
             onClick={() => selectFolder(folder.path)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150 ${
-              isActive
-                ? 'bg-primary-100 text-primary-700 font-medium'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150 folder-item`}
+            data-testid={`folder-item-${folder.path}`}
+            data-folder-path={folder.path}
           >
             <span className="text-lg flex-shrink-0">{folder.icon}</span>
             <span className="flex-1 text-left truncate">{folder.name}</span>
@@ -164,19 +183,29 @@ function FolderTree() {
         folders.map((folder) => {
           const isActive = selectedFolderId === folder.path
           const noteCount = getNoteCount(folder.path)
+          const isDragOver = dragOverFolder === folder.path
 
           return (
             <div
               key={folder.path}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150 ${
+              onDragOver={(e) => {
+                handleDragOver(e)
+                setDragOverFolder(folder.path)
+              }}
+              onDragLeave={() => setDragOverFolder(null)}
+              onDrop={(e) => handleDrop(folder.path, e)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150 folder-item ${
                 isActive
                   ? 'bg-primary-100 text-primary-700 font-medium'
                   : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              } ${isDragOver ? 'bg-primary-200 ring-2 ring-primary-400' : ''}`}
+              data-testid={`folder-item-${folder.path}`}
+              data-folder-path={folder.path}
             >
               <button
                 onClick={() => selectFolder(folder.path)}
                 className="flex-1 flex items-center gap-3 text-left truncate"
+                data-testid={`folder-button-${folder.path}`}
               >
                 <span className="text-lg">📁</span>
                 <span className="truncate">{folder.name}</span>

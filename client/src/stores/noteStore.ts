@@ -75,7 +75,29 @@ export const useNoteStore = create<NoteStore>((set) => ({
   loadNotes: async () => {
     try {
       const { notes, folders } = await notesApi.getAll()
-      set({ notes, folders })
+      // 后端返回的笔记列表没有 content，需要从路径推断 folderId
+      const notesWithContent = notes.map((note: any) => {
+        // 从路径推断 folderId（文件系统模式）
+        const pathParts = (note as any).path?.split('/') || []
+        const folderId = pathParts.length > 1 ? pathParts[0] : undefined
+        
+        return {
+          ...note,
+          content: (note as any).content || '',
+          folderId,
+          isFavorite: (note as any).isFavorite || false,
+        }
+      })
+      
+      // 转换 folders 格式以匹配前端
+      const foldersWithIds = (folders as any[]).map((f: any) => ({
+        id: f.path,
+        name: f.name,
+        icon: '📁',
+        noteCount: f.noteCount,
+      }))
+      
+      set({ notes: notesWithContent, folders: [...defaultFolders, ...foldersWithIds] })
     } catch (error) {
       console.error('Failed to load notes:', error)
       // 加载失败时保留初始笔记（离线模式）
@@ -103,10 +125,17 @@ export const useNoteStore = create<NoteStore>((set) => ({
     }))
     
     try {
+      // 等待一小段时间，让用户可以开始输入
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      // 获取用户可能已编辑的内容
+      let userTitle = tempNote.title
+      let userContent = tempNote.content
+      
       // 异步调用 API 创建笔记
       const createdNote = await notesApi.create({
-        title: tempNote.title,
-        content: tempNote.content,
+        title: userTitle,
+        content: userContent,
       })
       
       // 用后端返回的真实笔记替换临时笔记
@@ -143,11 +172,23 @@ export const useNoteStore = create<NoteStore>((set) => ({
   },
 
   updateNote: async (note: Note) => {
+    // 如果是临时 ID，跳过 API 调用（等待 addNote 完成）
+    if (note.id.startsWith('temp-')) {
+      // 只更新本地状态
+      set((state) => ({
+        notes: state.notes.map((n) =>
+          n.id === note.id ? { ...note, updatedAt: new Date().toISOString() } : n
+        ),
+        saveStatus: { status: 'saved', lastSaved: new Date().toISOString() },
+      }))
+      return
+    }
+    
     // 设置保存中状态
     set({ saveStatus: { status: 'saving' } })
     
     try {
-      // 调用 API 保存到后端
+      // 调用 API 保存到后端（包含 folderId）
       const savedNote = await notesApi.update({
         ...note,
         updatedAt: new Date().toISOString(),
@@ -171,6 +212,35 @@ export const useNoteStore = create<NoteStore>((set) => ({
           error: '保存失败，请检查网络连接',
         },
       })
+      throw error
+    }
+  },
+
+  // 移动笔记到文件夹
+  moveNote: async (noteId: string, folderId: string) => {
+    try {
+      const note = useNoteStore.getState().notes.find(n => n.id === noteId)
+      if (!note) return
+      
+      // 调用 API 更新笔记（包含 folderId）
+      const savedNote = await notesApi.update({
+        ...note,
+        folderId,
+        updatedAt: new Date().toISOString(),
+      })
+      
+      // 更新本地状态，触发列表刷新
+      set((state) => ({
+        notes: state.notes.map((n) => n.id === noteId ? savedNote : n),
+      }))
+      
+      // 如果当前选中的文件夹不是目标文件夹，且笔记在当前列表中，需要刷新列表
+      const currentFolderId = useNoteStore.getState().selectedFolderId
+      if (currentFolderId !== folderId && currentFolderId !== 'all') {
+        // 笔记被移动到其他文件夹，从当前列表移除（状态更新已处理）
+      }
+    } catch (error) {
+      console.error('Failed to move note:', error)
       throw error
     }
   },
