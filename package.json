@@ -1,0 +1,32 @@
+{
+  "name": "notebook",
+  "version": "1.0.0",
+  "description": "Web-based Markdown notebook tool with local file storage",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "docker-compose up -d && docker-compose logs -f",
+    "dev:app": "docker-compose up -d app && docker-compose logs -f app",
+    "build": "npm run build --workspaces",
+    "build:client": "npm run build -w client",
+    "build:server": "npm run build -w server",
+    "start": "docker-compose up -d",
+    "stop": "docker-compose down",
+    "logs": "docker-compose logs -f",
+    "clean": "docker-compose down -v && rm -rf node_modules"
+  },
+  "keywords": [
+    "notebook",
+    "markdown",
+    "notes"
+  ],
+  "author": "Star Office Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
