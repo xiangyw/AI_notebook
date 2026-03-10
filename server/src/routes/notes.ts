@@ -8,6 +8,9 @@ const router = Router();
 /**
  * GET /api/notes
  * 获取笔记列表
+ * 查询参数：
+ * - deleted: true | false | undefined (回收站过滤)
+ * - favorite: true (只看收藏)
  */
 router.get('/', async (req, res, next) => {
   try {
@@ -18,6 +21,8 @@ router.get('/', async (req, res, next) => {
       sortOrder: req.query.sortOrder as 'asc' | 'desc' || 'desc',
       limit: parseInt(req.query.limit as string) || 100,
       offset: parseInt(req.query.offset as string) || 0,
+      deleted: req.query.deleted === 'true' ? true : req.query.deleted === 'false' ? false : undefined,
+      favorite: req.query.favorite === 'true' ? true : undefined,
     };
     
     const { notes, folders } = await noteService.getAllNotes(params);
@@ -125,10 +130,12 @@ router.put('/:id', async (req, res, next) => {
 /**
  * DELETE /api/notes/:id
  * 删除笔记
+ * 查询参数：permanent=true (物理删除) | permanent=false (软删除，默认)
  */
 router.delete('/:id', async (req, res, next) => {
   try {
-    const deleted = await noteService.deleteNote(req.params.id);
+    const permanent = req.query.permanent === 'true';
+    const deleted = await noteService.deleteNote(req.params.id, permanent);
     
     if (!deleted) {
       throw new AppError(
@@ -141,7 +148,94 @@ router.delete('/:id', async (req, res, next) => {
     
     const response: ApiResponse<{ message: string }> = {
       success: true,
-      data: { message: '笔记已删除' },
+      data: { message: permanent ? '笔记已永久删除' : '笔记已移至回收站' },
+    };
+    
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/notes/:id/restore
+ * 恢复回收站中的笔记
+ */
+router.put('/:id/restore', async (req, res, next) => {
+  try {
+    const restored = await noteService.restoreNote(req.params.id);
+    
+    if (!restored) {
+      throw new AppError(
+        ErrorCodes.NOTE_NOT_FOUND,
+        '笔记不存在',
+        404,
+        { noteId: req.params.id }
+      );
+    }
+    
+    const response: ApiResponse<typeof restored> = {
+      success: true,
+      data: restored,
+      message: '笔记已恢复',
+    };
+    
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/notes/:id/favorite
+ * 收藏笔记
+ */
+router.put('/:id/favorite', async (req, res, next) => {
+  try {
+    const note = await noteService.toggleFavorite(req.params.id, true);
+    
+    if (!note) {
+      throw new AppError(
+        ErrorCodes.NOTE_NOT_FOUND,
+        '笔记不存在',
+        404,
+        { noteId: req.params.id }
+      );
+    }
+    
+    const response: ApiResponse<typeof note> = {
+      success: true,
+      data: note,
+      message: '已收藏',
+    };
+    
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/notes/:id/favorite
+ * 取消收藏笔记
+ */
+router.delete('/:id/favorite', async (req, res, next) => {
+  try {
+    const note = await noteService.toggleFavorite(req.params.id, false);
+    
+    if (!note) {
+      throw new AppError(
+        ErrorCodes.NOTE_NOT_FOUND,
+        '笔记不存在',
+        404,
+        { noteId: req.params.id }
+      );
+    }
+    
+    const response: ApiResponse<typeof note> = {
+      success: true,
+      data: note,
+      message: '已取消收藏',
     };
     
     res.json(response);

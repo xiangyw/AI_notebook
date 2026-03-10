@@ -6,6 +6,8 @@ export interface NoteFrontMatter {
   updatedAt: string;
   tags?: string[];
   folder?: string;
+  deleted?: boolean;
+  isFavorite?: boolean;
 }
 
 // 完整笔记（包含内容和元数据）
@@ -18,6 +20,8 @@ export interface Note {
   createdAt: Date;
   updatedAt: Date;
   wordCount: number;
+  deleted?: boolean;
+  isFavorite?: boolean;
 }
 
 // 笔记摘要（用于列表）
@@ -29,6 +33,8 @@ export interface NoteSummary {
   updatedAt: Date;
   wordCount: number;
   tags: string[];
+  deleted?: boolean;
+  isFavorite?: boolean;
 }
 
 // 文件夹信息
@@ -102,6 +108,8 @@ export interface ListQueryParams {
   sortOrder?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
+  deleted?: boolean;
+  favorite?: boolean;
 }
 
 // API 响应类型

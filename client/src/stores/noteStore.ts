@@ -22,6 +22,7 @@ const initialNotes: Note[] = [
     updatedAt: new Date().toISOString(),
     folderId: 'personal',
     isFavorite: true,
+    deleted: false,
   },
   {
     id: '2',
@@ -30,6 +31,7 @@ const initialNotes: Note[] = [
     createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
     updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     folderId: 'work',
+    deleted: false,
   },
   {
     id: '3',
@@ -38,6 +40,7 @@ const initialNotes: Note[] = [
     createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
     updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
     folderId: 'study',
+    deleted: false,
   },
   {
     id: '4',
@@ -46,6 +49,7 @@ const initialNotes: Note[] = [
     createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
     updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
     folderId: 'personal',
+    deleted: false,
   },
 ]
 
@@ -74,6 +78,7 @@ export const useNoteStore = create<NoteStore>((set) => ({
   // 初始化：从后端加载笔记
   loadNotes: async () => {
     try {
+      // 加载正常笔记（deleted=false）
       const { notes, folders } = await notesApi.getAll()
       // 后端返回的笔记列表没有 content，需要从路径推断 folderId
       const notesWithContent = notes.map((note: any) => {
@@ -86,6 +91,7 @@ export const useNoteStore = create<NoteStore>((set) => ({
           content: (note as any).content || '',
           folderId,
           isFavorite: (note as any).isFavorite || false,
+          deleted: (note as any).deleted || false,
         }
       })
       
@@ -115,6 +121,8 @@ export const useNoteStore = create<NoteStore>((set) => ({
       content: note.content || '',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      deleted: false,
+      isFavorite: false,
     }
     
     // 先本地创建，让用户可以立即开始编辑
@@ -245,10 +253,11 @@ export const useNoteStore = create<NoteStore>((set) => ({
     }
   },
 
-  deleteNote: async (id: string) => {
+  // 删除笔记（支持软删除和物理删除）
+  deleteNote: async (id: string, permanent?: boolean) => {
     try {
       // 调用 API 删除
-      await notesApi.delete(id)
+      await notesApi.delete(id, permanent)
       
       set((state) => ({
         notes: state.notes.filter((n) => n.id !== id),
@@ -260,6 +269,44 @@ export const useNoteStore = create<NoteStore>((set) => ({
     }
   },
 
+  // 恢复笔记
+  restoreNote: async (id: string) => {
+    try {
+      const restoredNote = await notesApi.restore(id)
+      
+      set((state) => ({
+        notes: state.notes.map((n) => n.id === id ? { ...restoredNote, deleted: false } : n),
+        selectedNoteId: state.selectedNoteId === id ? id : state.selectedNoteId,
+      }))
+    } catch (error) {
+      console.error('Failed to restore note:', error)
+      throw error
+    }
+  },
+
+  // 收藏/取消收藏笔记
+  toggleFavorite: async (id: string) => {
+    try {
+      const note = useNoteStore.getState().notes.find(n => n.id === id)
+      if (!note) return
+      
+      const isFavorite = !note.isFavorite
+      
+      // 调用 API
+      const updatedNote = isFavorite 
+        ? await notesApi.favorite(id)
+        : await notesApi.unfavorite(id)
+      
+      // 更新本地状态
+      set((state) => ({
+        notes: state.notes.map((n) => n.id === id ? { ...updatedNote, isFavorite: !isFavorite } : n),
+      }))
+    } catch (error) {
+      console.error('Failed to toggle favorite:', error)
+      throw error
+    }
+  },
+
   selectNote: (id: string) => {
     set({ selectedNoteId: id })
   },
@@ -267,50 +314,6 @@ export const useNoteStore = create<NoteStore>((set) => ({
   // 文件夹 Actions
   selectFolder: (id: string) => {
     set({ selectedFolderId: id, selectedNoteId: null })
-  },
-
-  // 移动笔记到文件夹 - 修复 Bug #4: 拖拽笔记到文件夹后自动刷新列表
-  moveNote: async (noteId: string, targetFolderId: string) => {
-    try {
-      // 先从当前状态获取笔记
-      let note: Note | undefined
-      set((state) => {
-        note = state.notes.find((n) => n.id === noteId)
-        return {}
-      })
-      
-      if (!note) {
-        throw new Error(`Note ${noteId} not found`)
-      }
-      
-      // 调用 API 更新笔记的文件夹
-      const updatedNote = await notesApi.update({
-        ...note,
-        folderId: targetFolderId,
-        updatedAt: new Date().toISOString(),
-      })
-      
-      // 本地更新状态 - 这会触发 React 组件重新渲染
-      // 注意：set() 调用会通知 Zustand 状态已变更，所有订阅该 store 的组件会自动重新渲染
-      set((state) => ({
-        notes: state.notes.map((n) =>
-          n.id === noteId ? updatedNote : n
-        ),
-        saveStatus: {
-          status: 'saved',
-          lastSaved: new Date().toISOString(),
-        },
-      }))
-    } catch (error) {
-      console.error('Failed to move note:', error)
-      set({
-        saveStatus: {
-          status: 'error',
-          error: '移动失败，请检查网络连接',
-        },
-      })
-      throw error
-    }
   },
 
   // UI Actions
@@ -366,12 +369,16 @@ export const getFilteredNotes = (
 
   // 按文件夹过滤
   if (selectedFolderId === 'favorites') {
-    filtered = notes.filter((n) => n.isFavorite)
+    filtered = notes.filter((n) => n.isFavorite && !n.deleted)
   } else if (selectedFolderId === 'trash') {
-    // TODO: 实现回收站逻辑
-    filtered = []
+    // 回收站：显示已删除的笔记
+    filtered = notes.filter((n) => n.deleted === true)
   } else if (selectedFolderId && selectedFolderId !== 'all') {
-    filtered = notes.filter((n) => n.folderId === selectedFolderId)
+    // 其他文件夹：只显示未删除的笔记
+    filtered = notes.filter((n) => n.folderId === selectedFolderId && !n.deleted)
+  } else {
+    // 全部笔记：排除已删除的
+    filtered = notes.filter((n) => !n.deleted)
   }
 
   // 按搜索查询过滤

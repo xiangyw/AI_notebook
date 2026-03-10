@@ -76,6 +76,14 @@ function generateFrontMatter(note: Partial<Note>): string {
     frontMatter.tags = note.tags;
   }
   
+  if (note.deleted !== undefined) {
+    frontMatter.deleted = note.deleted;
+  }
+  
+  if (note.isFavorite !== undefined) {
+    frontMatter.isFavorite = note.isFavorite;
+  }
+  
   let yaml = '---\n';
   for (const [key, value] of Object.entries(frontMatter)) {
     if (Array.isArray(value)) {
@@ -165,7 +173,7 @@ export async function createNote(input: CreateNoteInput): Promise<Note> {
  * 从文件系统获取笔记列表
  */
 async function getAllNotesFromFiles(params: ListQueryParams = {}): Promise<{ notes: Note[]; folders: FolderInfo[] }> {
-  const { sortBy = 'updatedAt', sortOrder = 'desc' } = params;
+  const { sortBy = 'updatedAt', sortOrder = 'desc', deleted, favorite } = params;
   const notesDir = path.join(config.dataDir, 'notes');
   
   const notes: Note[] = [];
@@ -189,15 +197,28 @@ async function getAllNotesFromFiles(params: ListQueryParams = {}): Promise<{ not
         const folder = path.dirname(file);
         if (folder !== '.') folderSet.add(folder);
         
+        const noteDeleted = frontMatter.deleted === true || frontMatter.deleted === 'true';
+        const noteFavorite = frontMatter.isFavorite === true || frontMatter.isFavorite === 'true';
+        
+        // 过滤：deleted 参数
+        if (deleted === true && !noteDeleted) continue; // 只看回收站
+        if (deleted === false && noteDeleted) continue; // 只看正常笔记
+        if (deleted === undefined && noteDeleted) continue; // 默认不显示回收站
+        
+        // 过滤：favorite 参数
+        if (favorite === true && !noteFavorite) continue; // 只看收藏
+        
         notes.push({
           id: frontMatter.id || path.basename(file, '.md'),
           title: frontMatter.title || path.basename(file, '.md'),
-          content: body, // ← 修复：添加 content 字段
+          content: body,
           path: file,
           tags: frontMatter.tags || [],
           createdAt: frontMatter.createdAt ? new Date(frontMatter.createdAt) : stat.birthtime,
           updatedAt: frontMatter.updatedAt ? new Date(frontMatter.updatedAt) : stat.mtime,
           wordCount: countWords(body),
+          deleted: noteDeleted,
+          isFavorite: noteFavorite,
         });
       } catch (err) {
         console.warn(`无法读取文件 ${file}:`, err);
@@ -220,7 +241,7 @@ async function getAllNotesFromFiles(params: ListQueryParams = {}): Promise<{ not
     const folders: FolderInfo[] = Array.from(folderSet).map(folderPath => ({
       name: path.basename(folderPath),
       path: folderPath,
-      noteCount: notes.filter(n => n.path.startsWith(folderPath)).length,
+      noteCount: notes.filter(n => n.path.startsWith(folderPath) && !n.deleted).length, // 排除已删除笔记
     }));
     
     return { notes, folders };
@@ -382,24 +403,112 @@ export async function updateNote(id: string, input: UpdateNoteInput): Promise<No
 }
 
 /**
- * 删除笔记
+ * 删除笔记（支持软删除和物理删除）
+ * @param permanent - true: 物理删除，false: 软删除（默认）
  */
-export async function deleteNote(id: string): Promise<boolean> {
+export async function deleteNote(id: string, permanent: boolean = false): Promise<boolean> {
   const note = await getNoteById(id);
   if (!note) {
     return false;
   }
   
-  const fullPath = getNoteFilePath(note.path);
-  try {
-    await fs.unlink(fullPath);
-    return true;
-  } catch (err: any) {
-    if (err.code === 'ENOENT') {
-      return false;
+  if (permanent) {
+    // 物理删除
+    const fullPath = getNoteFilePath(note.path);
+    try {
+      await fs.unlink(fullPath);
+      return true;
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        return false;
+      }
+      throw err;
     }
-    throw err;
+  } else {
+    // 软删除：更新 front matter 设置 deleted=true
+    const updatedNote: Partial<Note> = {
+      ...note,
+      deleted: true,
+      updatedAt: new Date(),
+    };
+    
+    const frontMatter = generateFrontMatter(updatedNote);
+    const fullContent = frontMatter + note.content;
+    const fullPath = getNoteFilePath(note.path);
+    
+    await fs.writeFile(fullPath, fullContent, 'utf-8');
+    return true;
   }
+}
+
+/**
+ * 恢复笔记（设置 deleted=false）
+ */
+export async function restoreNote(id: string): Promise<Note | null> {
+  const note = await getNoteById(id);
+  if (!note) {
+    return null;
+  }
+  
+  const updatedNote: Partial<Note> = {
+    ...note,
+    deleted: false,
+    updatedAt: new Date(),
+  };
+  
+  const frontMatter = generateFrontMatter(updatedNote);
+  const fullContent = frontMatter + note.content;
+  const fullPath = getNoteFilePath(note.path);
+  
+  await fs.writeFile(fullPath, fullContent, 'utf-8');
+  
+  return {
+    id: note.id,
+    title: note.title,
+    content: note.content,
+    path: note.path,
+    tags: note.tags,
+    createdAt: note.createdAt,
+    updatedAt: updatedNote.updatedAt!,
+    wordCount: note.wordCount,
+    deleted: false,
+    isFavorite: note.isFavorite,
+  };
+}
+
+/**
+ * 收藏/取消收藏笔记
+ */
+export async function toggleFavorite(id: string, favorite: boolean): Promise<Note | null> {
+  const note = await getNoteById(id);
+  if (!note) {
+    return null;
+  }
+  
+  const updatedNote: Partial<Note> = {
+    ...note,
+    isFavorite: favorite,
+    updatedAt: new Date(),
+  };
+  
+  const frontMatter = generateFrontMatter(updatedNote);
+  const fullContent = frontMatter + note.content;
+  const fullPath = getNoteFilePath(note.path);
+  
+  await fs.writeFile(fullPath, fullContent, 'utf-8');
+  
+  return {
+    id: note.id,
+    title: note.title,
+    content: note.content,
+    path: note.path,
+    tags: note.tags,
+    createdAt: note.createdAt,
+    updatedAt: updatedNote.updatedAt!,
+    wordCount: note.wordCount,
+    deleted: note.deleted,
+    isFavorite: favorite,
+  };
 }
 
 /**

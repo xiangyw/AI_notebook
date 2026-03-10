@@ -85,11 +85,45 @@ export const notesApi = {
   },
 
   // 删除笔记
-  delete: async (id: string): Promise<void> => {
+  delete: async (id: string, permanent?: boolean): Promise<void> => {
     try {
-      await api.delete(`/notes/${id}`)
+      const url = permanent ? `/notes/${id}?permanent=true` : `/notes/${id}`
+      await api.delete(url)
     } catch (error) {
       console.error('Failed to delete note:', error)
+      throw error
+    }
+  },
+
+  // 恢复笔记
+  restore: async (id: string): Promise<Note> => {
+    try {
+      const response = await api.put<ApiResponse<Note>>(`/notes/${id}/restore`)
+      return response.data.data!
+    } catch (error) {
+      console.error('Failed to restore note:', error)
+      throw error
+    }
+  },
+
+  // 收藏笔记
+  favorite: async (id: string): Promise<Note> => {
+    try {
+      const response = await api.put<ApiResponse<Note>>(`/notes/${id}/favorite`)
+      return response.data.data!
+    } catch (error) {
+      console.error('Failed to favorite note:', error)
+      throw error
+    }
+  },
+
+  // 取消收藏
+  unfavorite: async (id: string): Promise<Note> => {
+    try {
+      const response = await api.delete<ApiResponse<Note>>(`/notes/${id}/favorite`)
+      return response.data.data!
+    } catch (error) {
+      console.error('Failed to unfavorite note:', error)
       throw error
     }
   },
