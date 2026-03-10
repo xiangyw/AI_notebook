@@ -1,7 +1,6 @@
 import config from '../config/index.js';
 import type { 
   Note, 
-  NoteSummary, 
   CreateNoteInput, 
   UpdateNoteInput, 
   FolderInfo,
@@ -165,11 +164,11 @@ export async function createNote(input: CreateNoteInput): Promise<Note> {
 /**
  * 从文件系统获取笔记列表
  */
-async function getAllNotesFromFiles(params: ListQueryParams = {}): Promise<{ notes: NoteSummary[]; folders: FolderInfo[] }> {
+async function getAllNotesFromFiles(params: ListQueryParams = {}): Promise<{ notes: Note[]; folders: FolderInfo[] }> {
   const { sortBy = 'updatedAt', sortOrder = 'desc' } = params;
   const notesDir = path.join(config.dataDir, 'notes');
   
-  const notes: NoteSummary[] = [];
+  const notes: Note[] = [];
   const folderSet = new Set<string>();
   
   try {
@@ -193,11 +192,12 @@ async function getAllNotesFromFiles(params: ListQueryParams = {}): Promise<{ not
         notes.push({
           id: frontMatter.id || path.basename(file, '.md'),
           title: frontMatter.title || path.basename(file, '.md'),
+          content: body, // ← 修复：添加 content 字段
           path: file,
-          wordCount: countWords(body),
+          tags: frontMatter.tags || [],
           createdAt: frontMatter.createdAt ? new Date(frontMatter.createdAt) : stat.birthtime,
           updatedAt: frontMatter.updatedAt ? new Date(frontMatter.updatedAt) : stat.mtime,
-          tags: frontMatter.tags || [],
+          wordCount: countWords(body),
         });
       } catch (err) {
         console.warn(`无法读取文件 ${file}:`, err);
@@ -233,7 +233,7 @@ async function getAllNotesFromFiles(params: ListQueryParams = {}): Promise<{ not
 /**
  * 获取所有笔记
  */
-export async function getAllNotes(params: ListQueryParams = {}): Promise<{ notes: NoteSummary[]; folders: FolderInfo[] }> {
+export async function getAllNotes(params: ListQueryParams = {}): Promise<{ notes: Note[]; folders: FolderInfo[] }> {
   return getAllNotesFromFiles(params);
 }
 
@@ -337,19 +337,28 @@ export async function updateNote(id: string, input: UpdateNoteInput): Promise<No
   if (input.content !== undefined) updatedNote.content = input.content;
   if (input.tags !== undefined) updatedNote.tags = input.tags;
   
-  if (input.path !== undefined && input.path !== existingNote.path) {
+  // 处理文件夹变更（文件系统模式：通过路径实现）
+  let targetPath = input.path || existingNote.path;
+  const folderId = (input as any).folderId;
+  
+  if (folderId) {
+    const fileName = path.basename(existingNote.path);
+    targetPath = folderId ? path.join(folderId, fileName) : fileName;
+  }
+  
+  if (targetPath !== existingNote.path) {
     const oldPath = getNoteFilePath(existingNote.path);
-    const newPath = getNoteFilePath(input.path);
+    const newPath = getNoteFilePath(targetPath);
     
     await fs.mkdir(path.dirname(newPath), { recursive: true });
     await fs.rename(oldPath, newPath);
     
-    updatedNote.path = input.path;
+    updatedNote.path = targetPath;
   }
   
   const finalTitle = updatedNote.title ?? existingNote.title;
   const finalContent = updatedNote.content ?? existingNote.content;
-  const finalPath = updatedNote.path ?? existingNote.path;
+  const finalPath = updatedNote.path ?? targetPath;
   const finalTags = updatedNote.tags ?? existingNote.tags;
   
   const frontMatter = generateFrontMatter({ ...updatedNote, title: finalTitle, content: finalContent, path: finalPath, tags: finalTags });

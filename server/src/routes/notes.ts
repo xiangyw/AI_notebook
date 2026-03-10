@@ -97,9 +97,9 @@ router.post('/', async (req, res, next) => {
  */
 router.put('/:id', async (req, res, next) => {
   try {
-    const { title, content, path, tags }: UpdateNoteInput = req.body;
+    const { title, content, path, tags, folderId }: UpdateNoteInput & { folderId?: string } = req.body;
     
-    const note = await noteService.updateNote(req.params.id, { title, content, path, tags });
+    const note = await noteService.updateNote(req.params.id, { title, content, path, tags, folderId } as any);
     
     if (!note) {
       throw new AppError(

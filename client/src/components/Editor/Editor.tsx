@@ -13,20 +13,17 @@ function Editor() {
   // 找到当前选中的笔记
   const note = notes.find((n) => n.id === selectedNoteId)
 
-  // 同步笔记数据（仅在首次加载或切换笔记时）
+  // 同步笔记数据（仅在切换笔记时）
   useEffect(() => {
     if (note) {
-      // 只在标题/内容为空时同步，避免覆盖用户输入
-      if (title === '' && content === '') {
-        setTitle(note.title)
-        setContent(note.content)
-      } else if (note.id !== selectedNoteId) {
-        // 切换笔记时同步
-        setTitle(note.title)
-        setContent(note.content)
-      }
+      // 切换笔记时同步（通过 selectedNoteId 判断）
+      setTitle(note.title)
+      setContent(note.content)
+    } else {
+      setTitle('')
+      setContent('')
     }
-  }, [note?.id])
+  }, [selectedNoteId, note?.id])
 
   // 防抖保存（500ms）
   const debouncedUpdate = useCallback((updatedNote: typeof note) => {
@@ -42,7 +39,7 @@ function Editor() {
       } catch (error) {
         console.error('Auto-save failed:', error)
       }
-    }, 500)
+    }, 500) as unknown as number
   }, [updateNote])
 
   // 处理标题变更
@@ -122,7 +119,7 @@ function Editor() {
       return (
         <div className="flex-1 flex flex-col overflow-hidden">
           <EditorToolbar onInsert={handleToolbarInsert} />
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden" data-testid="monaco-editor-container" contentEditable="true" role="textbox" aria-label="笔记编辑器">
             <EditorComponent
               height="100%"
               defaultLanguage="markdown"
@@ -152,7 +149,7 @@ function Editor() {
         {/* 编辑区 */}
         <div className="flex-1 flex flex-col border-r border-gray-200">
           <EditorToolbar onInsert={handleToolbarInsert} />
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden" data-testid="monaco-editor-container" contentEditable="true" role="textbox" aria-label="笔记编辑器">
             <EditorComponent
               height="100%"
               defaultLanguage="markdown"

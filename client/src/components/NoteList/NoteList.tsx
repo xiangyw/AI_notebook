@@ -3,7 +3,7 @@ import { getFilteredNotes } from '../../stores/noteStore'
 
 function NoteList() {
   const { notes, selectedNoteId, selectNote, deleteNote, selectedFolderId, uiState } = useNoteStore()
-
+  
   const filteredNotes = getFilteredNotes(notes, selectedFolderId, uiState.searchQuery)
 
   // 格式化日期
@@ -32,8 +32,8 @@ function NoteList() {
   }
 
   // 获取内容预览
-  const getPreview = (content: string) => {
-    // 移除 markdown 标记
+  const getPreview = (content?: string) => {
+    if (!content) return '无内容'
     const plainText = content
       .replace(/^[#*\-\[\]]+\s*/gm, '')
       .replace(/`{1,3}[\s\S]*?`{1,3}/g, '')
@@ -51,6 +51,8 @@ function NoteList() {
     }
   }
 
+
+
   // 空状态
   if (filteredNotes.length === 0) {
     return (
@@ -65,22 +67,35 @@ function NoteList() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-thin">
+    <div className="flex-1 overflow-y-auto scrollbar-thin" data-testid="note-list">
       <ul className="divide-y divide-gray-100">
         {filteredNotes.map((note) => {
           const isSelected = selectedNoteId === note.id
           const preview = getPreview(note.content)
 
           return (
-            <li key={note.id}>
+            <li key={note.id} data-testid={`note-item-${note.id}`} className="note-item">
               <div
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', note.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
                 onClick={() => selectNote(note.id)}
-                className={`group flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors duration-150 ${
+                className={`group flex items-start gap-3 px-4 py-3 cursor-move transition-colors duration-150 ${
                   isSelected
                     ? 'bg-primary-50 border-l-4 border-primary-500'
                     : 'hover:bg-gray-50 active:bg-gray-100 border-l-4 border-transparent'
                 }`}
+                data-testid={`note-draggable-${note.id}`}
               >
+                {/* 拖拽图标 */}
+                <div className="text-gray-300 cursor-grab">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                  </svg>
+                </div>
+
                 {/* 状态指示器 */}
                 <div
                   className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${
@@ -133,7 +148,7 @@ function NoteList() {
 
       {/* 底部提示 */}
       <div className="p-3 text-center text-xs text-gray-400 border-t border-gray-100">
-        共 {filteredNotes.length} 篇笔记
+        共 {filteredNotes.length} 篇笔记 · 可拖拽到文件夹
       </div>
     </div>
   )

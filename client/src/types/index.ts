@@ -51,6 +51,7 @@ export interface NoteStore {
   updateNote: (note: Note) => Promise<void>
   deleteNote: (id: string) => Promise<void>
   selectNote: (id: string) => void
+  moveNote: (noteId: string, folderId: string) => Promise<void>
   
   // Actions - 文件夹
   selectFolder: (id: string) => void
