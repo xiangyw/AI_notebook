@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # MySQL 数据库服务
+  mysql:
+    image: mysql:8.0
+    container_name: notebook-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-notebook_root_2026}
+      MYSQL_DATABASE: notebook
+      MYSQL_USER: notebook
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-Notebook2026!}
+    volumes:
+      - /home/ubuntu-user/docker/notebook/mysql/data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "3306:3306"
+    networks:
+      - notebook-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 应用服务
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: notebook-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: notebook
+      DB_PASSWORD: ${MYSQL_PASSWORD:-Notebook2026!}
+      DB_NAME: notebook
+      DATA_DIR: /app/server/data
+    volumes:
+      - /home/ubuntu-user/docker/notebook/app/data:/app/server/data
+    ports:
+      - "3000:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - notebook-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  notebook-network:
+    driver: bridge
