@@ -6,6 +6,7 @@ export interface Note {
   updatedAt: string
   folderId?: string
   isFavorite?: boolean
+  deleted?: boolean
   tags?: string[]
 }
 
@@ -49,13 +50,14 @@ export interface NoteStore {
   // Actions - 笔记
   addNote: (note: Note) => Promise<void>
   updateNote: (note: Note) => Promise<void>
-  deleteNote: (id: string) => Promise<void>
+  deleteNote: (id: string, permanent?: boolean) => Promise<void>
+  restoreNote: (id: string) => Promise<void>
+  toggleFavorite: (id: string) => Promise<void>
   selectNote: (id: string) => void
   moveNote: (noteId: string, folderId: string) => Promise<void>
   
   // Actions - 文件夹
   selectFolder: (id: string) => void
-  moveNote: (noteId: string, targetFolderId: string) => Promise<void>
   
   // Actions - UI
   toggleSidebar: () => void

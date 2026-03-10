@@ -88,12 +88,22 @@ function FolderTree() {
     e.dataTransfer.dropEffect = 'move'
   }
 
-  // 计算每个文件夹的笔记数量（本地计算）
+  // 计算每个文件夹的笔记数量（本地计算，排除已删除笔记）
   const getNoteCount = (folderPath: string) => {
-    if (folderPath === 'all' || folderPath === 'favorites' || folderPath === 'trash') {
-      return 0
+    if (folderPath === 'all') {
+      // 全部笔记：排除已删除
+      return notes.filter(n => !n.deleted).length
     }
-    return notes.filter((n) => n.folderId === folderPath).length
+    if (folderPath === 'favorites') {
+      // 收藏夹：未删除且已收藏
+      return notes.filter(n => n.isFavorite && !n.deleted).length
+    }
+    if (folderPath === 'trash') {
+      // 回收站：已删除的笔记
+      return notes.filter(n => n.deleted === true).length
+    }
+    // 自定义文件夹：排除已删除
+    return notes.filter((n) => n.folderId === folderPath && !n.deleted).length
   }
 
   // 默认文件夹
@@ -108,7 +118,7 @@ function FolderTree() {
       {/* 默认文件夹 */}
       {defaultFolders.map((folder) => {
         const isActive = selectedFolderId === folder.path
-        const noteCount = folder.path === 'all' ? notes.length : 0
+        const noteCount = getNoteCount(folder.path)
 
         return (
           <button
